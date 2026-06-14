@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BikeSpot — Find any bike in London</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f12;
+    color: #f0efe8;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    background: #0f0f12;
+    border-bottom: 0.5px solid rgba(255,255,255,0.1);
+    flex-shrink: 0;
+    z-index: 1000;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-dot {
+    width: 28px;
+    height: 28px;
+    background: #1d9e75;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+  }
+
+  .logo-text {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+
+  .logo-text span { color: #1d9e75; }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #1d9e75;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .filters {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: #0f0f12;
+    border-bottom: 0.5px solid rgba(255,255,255,0.08);
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+  }
+
+  .filters::-webkit-scrollbar { display: none; }
+
+  .filter-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: transparent;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+
+  .filter-btn.active {
+    background: #1d9e75;
+    border-color: #1d9e75;
+    color: #fff;
+  }
+
+  .filter-btn:hover:not(.active) {
+    border-color: rgba(255,255,255,0.3);
+    color: rgba(255,255,255,0.9);
+  }
+
+  .provider-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  #map {
+    flex: 1;
+    z-index: 1;
+  }
+
+  .bottom-sheet {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #1a1a20;
+    border-top: 0.5px solid rgba(255,255,255,0.1);
+    border-radius: 16px 16px 0 0;
+    z-index: 500;
+    padding: 0 0 env(safe-area-inset-bottom, 0);
+    transition: transform 0.3s ease;
+  }
+
+  .sheet-handle {
+    width: 36px; height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    margin: 10px auto 14px;
+  }
+
+  .nearby-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.35);
+    padding: 0 16px;
+    margin-bottom: 10px;
+  }
+
+  .bike-list {
+    display: flex;
+    gap: 10px;
+    padding: 0 16px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .bike-list::-webkit-scrollbar { display: none; }
+
+  .bike-card {
+    flex-shrink: 0;
+    width: 150px;
+    background: #24242c;
+    border: 0.5px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .bike-card:hover {
+    border-color: rgba(255,255,255,0.25);
+    background: #2a2a34;
+  }
+
+  .bike-card-provider {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .bike-card-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .bike-card-type {
+    font-size: 15px;
+    font-weight: 600;
+    color: #f0efe8;
+    margin-bottom: 4px;
+  }
+
+  .bike-card-dist {
+    font-size: 12px;
+    color: rgba(255,255,255,0.45);
+    margin-bottom: 10px;
+  }
+
+  .bike-card-meta {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 3px 7px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+
+  .badge-battery {
+    background: rgba(29,158,117,0.2);
+    color: #1d9e75;
+  }
+
+  .badge-price {
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+  }
+
+  .open-btn {
+    width: 100%;
+    padding: 8px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    transition: opacity 0.15s;
+  }
+
+  .open-btn:hover { opacity: 0.85; }
+
+  .locate-btn {
+    position: absolute;
+    right: 14px;
+    bottom: 210px;
+    width: 44px;
+    height: 44px;
+    background: #1a1a20;
+    border: 0.5px solid rgba(255,255,255,0.15);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 400;
+    font-size: 18px;
+    transition: all 0.15s;
+  }
+
+  .locate-btn:hover {
+    background: #24242c;
+    border-color: rgba(255,255,255,0.3);
+  }
+
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: #0f0f12;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    gap: 16px;
+  }
+
+  .loading-spinner {
+    width: 36px; height: 36px;
+    border: 2px solid rgba(29,158,117,0.2);
+    border-top-color: #1d9e75;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-size: 14px;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .loading-sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.25);
+    margin-top: -8px;
+  }
+
+  .error-banner {
+    display: none;
+    background: rgba(216,90,48,0.15);
+    border-bottom: 0.5px solid rgba(216,90,48,0.3);
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #d85a30;
+    text-align: center;
+  }
+
+  .count-badge {
+    background: rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    margin-left: 4px;
+  }
+
+  /* Leaflet dark override */
+  .leaflet-container { background: #1a1a20; }
+  .leaflet-tile { filter: brightness(0.75) contrast(1.1) saturate(0.7); }
+  .leaflet-control-attribution { display: none; }
+  .leaflet-control-zoom { display: none; }
+
+  .custom-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.9);
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-overlay">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Finding bikes near you…</div>
+  <div class="loading-sub">Checking Santander · Lime · Forest · Voi</div>
+</div>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot">🚲</div>
+    <div class="logo-text">Bike<span>Spot</span></div>
+  </div>
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    <span id="status-text">Live</span>
+  </div>
+</header>
+
+<div id="error-banner" class="error-banner">
+  Some providers couldn't be reached. Showing available data.
+</div>
+
+<div class="filters">
+  <button class="filter-btn active" data-filter="all" onclick="setFilter('all', this)">
+    All <span class="count-badge" id="count-all">0</span>
+  </button>
+  <button class="filter-btn" data-filter="santander" onclick="setFilter('santander', this)">
+    <div class="provider-dot" style="background:#E8131C"></div>
+    Santander <span class="count-badge" id="count-santander">0</span>
+  </button>
+  <button class="filter-btn" data-filter="lime" onclick="setFilter('lime', this)">
+    <div class="provider-dot" style="background:#00D632"></div>
+    Lime <span class="count-badge" id="count-lime">0</span>
+  </button>
+  <button class="filter-btn" data-filter="forest" onclick="setFilter('forest', this)">
+    <div class="provider-dot" style="background:#2D6A4F"></div>
+    Forest <span class="count-badge" id="count-forest">0</span>
+  </button>
+  <button class="filter-btn" data-filter="voi" onclick="setFilter('voi', this)">
+    <div class="provider-dot" style="background:#FF3D4A"></div>
+    Voi <span class="count-badge" id="count-voi">0</span>
+  </button>
+  <button class="filter-btn" data-filter="ebike" onclick="setFilter('ebike', this)">
+    ⚡ E-bike only
+  </button>
+</div>
+
+<div id="map" style="position:relative;"></div>
+
+<div class="bottom-sheet">
+  <div class="sheet-handle"></div>
+  <div class="nearby-title">Nearest bikes <span id="nearby-count"></span></div>
+  <div class="bike-list" id="bike-list"></div>
+</div>
+
+<button class="locate-btn" onclick="locateMe()" title="Find my location">📍</button>
+
+<script>
+const PROVIDERS = {
+  santander: {
+    name: 'Santander',
+    color: '#E8131C',
+    bgColor: 'rgba(232,19,28,0.15)',
+    textColor: '#ff4d4d',
+    appDeepLink: 'https://tfl.gov.uk/modes/cycling/santander-cycles',
+    appName: 'TfL App',
+    appColor: '#0019A8',
+    isEbike: false,
+  },
+  lime: {
+    name: 'Lime',
+    color: '#00D632',
+    bgColor: 'rgba(0,214,50,0.15)',
+    textColor: '#00D632',
+    appDeepLink: 'lime:///',
+    appFallback: 'https://li.me/ride',
+    appName: 'Lime App',
+    appColor: '#00D632',
+    isEbike: true,
+  },
+  forest: {
+    name: 'Forest',
+    color: '#2D6A4F',
+    bgColor: 'rgba(45,106,79,0.15)',
+    textColor: '#52b788',
+    appDeepLink: 'https://apps.apple.com/gb/app/forest-ebike-sharing/id6443626172',
+    appFallback: 'https://www.forest.me/',
+    appName: 'Forest App',
+    appColor: '#2D6A4F',
+    isEbike: true,
+  },
+  voi: {
+    name: 'Voi',
+    color: '#FF3D4A',
+    bgColor: 'rgba(255,61,74,0.15)',
+    textColor: '#ff6b74',
+    appDeepLink: 'voi:///',
+    appFallback: 'https://www.voiscooters.com/ride-voi/',
+    appName: 'Voi App',
+    appColor: '#FF3D4A',
+    isEbike: true,
+  }
+};
+
+let map, userMarker, userLat, userLng;
+let allBikes = [];
+let markers = [];
+let activeFilter = 'all';
+
+// London centre default
+const DEFAULT_LAT = 51.5074, DEFAULT_LNG = -0.1278;
+
+function initMap(lat, lng) {
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView([lat, lng], 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19
+  }).addTo(map);
+
+  if (userLat && userLng) {
+    placeUserMarker(userLat, userLng);
+  }
+}
+
+function placeUserMarker(lat, lng) {
+  if (userMarker) map.removeLayer(userMarker);
+  userMarker = L.circleMarker([lat, lng], {
+    radius: 8,
+    fillColor: '#1d9e75',
+    color: '#fff',
+    weight: 2,
+    fillOpacity: 1
+  }).addTo(map);
+}
+
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLng = (lng2-lng1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function formatDist(m) {
+  return m < 1000 ? `${Math.round(m)}m away` : `${(m/1000).toFixed(1)}km away`;
+}
+
+async function fetchSantander(lat, lng) {
+  try {
+    const resp = await fetch('https://api.tfl.gov.uk/BikePoint/');
+    if (!resp.ok) throw new Error('TfL API error');
+    const stations = await resp.json();
+    return stations
+      .filter(s => {
+        const bikes = s.additionalProperties?.find(p => p.key === 'NbBikes');
+        return bikes && parseInt(bikes.value) > 0;
+      })
+      .map(s => {
+        const bikes = s.additionalProperties?.find(p => p.key === 'NbBikes');
+        const docks = s.additionalProperties?.find(p => p.key === 'NbEmptyDocks');
+        return {
+          id: s.id,
+          provider: 'santander',
+          type: 'Pedal bike',
+          lat: s.lat,
+          lng: s.lon,
+          name: s.commonName,
+          bikes: parseInt(bikes?.value || 0),
+          docks: parseInt(docks?.value || 0),
+          battery: null,
+          price: '£1.65 / 30 min',
+          dist: haversine(lat, lng, s.lat, s.lon),
+          isEbike: false,
+        };
+      })
+      .sort((a,b) => a.dist - b.dist)
+      .slice(0, 30);
+  } catch(e) {
+    console.warn('Santander fetch failed:', e);
+    return [];
+  }
+}
+
+// GBFS helpers
+async function fetchGBFS(url, provider, lat, lng, isEbike, priceStr) {
+  try {
+    const r = await fetch(url);
+    const d = await r.json();
+    const bikes = d.data?.bikes || [];
+    return bikes
+      .filter(b => !b.is_reserved && !b.is_disabled)
+      .map(b => ({
+        id: b.bike_id,
+        provider,
+        type: isEbike ? 'E-bike' : 'Bike',
+        lat: b.lat,
+        lng: b.lon,
+        name: null,
+        bikes: 1,
+        battery: b.current_range_meters ? `${Math.round(b.current_range_meters/1000)}km range` : null,
+        price: priceStr,
+        dist: haversine(lat, lng, b.lat, b.lon),
+        isEbike,
+        rentalUriIos: b.rental_uris?.ios || null,
+      }))
+      .sort((a,b) => a.dist - b.dist)
+      .slice(0, 25);
+  } catch(e) {
+    console.warn(`${provider} GBFS failed:`, e);
+    return [];
+  }
+}
+
+async function fetchLime(lat, lng) {
+  // Lime requires partner auth on their direct feed.
+  // We use a CORS proxy to reach it, trying both v1 and v2 slugs.
+  const PROXY = 'https://corsproxy.io/?';
+  const urls = [
+    `${PROXY}https://data.lime.bike/api/partners/v2/gbfs/london/free_bike_status.json`,
+    `${PROXY}https://data.lime.bike/api/partners/v1/gbfs/london/free_bike_status`,
+    `${PROXY}https://data.lime.bike/api/partners/v2/gbfs/london_uk/free_bike_status.json`,
+  ];
+  for (const url of urls) {
+    try {
+      const r = await fetch(url);
+      if (!r.ok) continue;
+      const d = await r.json();
+      const bikes = d.data?.bikes || [];
+      if (bikes.length === 0) continue;
+      console.log(`Lime: got ${bikes.length} bikes from ${url}`);
+      return bikes
+        .filter(b => !b.is_reserved && !b.is_disabled)
+        .map(b => ({
+          id: b.bike_id,
+          provider: 'lime',
+          type: 'E-bike',
+          lat: b.lat,
+          lng: b.lon,
+          name: null,
+          bikes: 1,
+          battery: b.current_range_meters ? `${Math.round(b.current_range_meters/1000)}km range` : null,
+          price: '£1 unlock + £0.20/min',
+          dist: haversine(lat, lng, b.lat, b.lon),
+          isEbike: true,
+          rentalUriIos: b.rental_uris?.ios || null,
+        }))
+        .sort((a,b) => a.dist - b.dist)
+        .slice(0, 25);
+    } catch(e) {
+      console.warn('Lime attempt failed:', url, e.message);
+    }
+  }
+  console.warn('All Lime feeds failed — feed requires official partner access');
+  return [];
+}
+
+async function fetchVoi(lat, lng) {
+  // Try multiple Voi endpoint formats
+  const urls = [
+    'https://api.ridewithvoi.com/gbfs/2/london/free_bike_status',
+    'https://api.ridewithvoi.com/gbfs/v2/london/free_bike_status.json',
+    'https://gbfs.voiapp.io/gbfs/2/london/free_bike_status.json',
+  ];
+  for (const url of urls) {
+    const result = await fetchGBFS(url, 'voi', lat, lng, true, '£1 unlock + £0.20/min');
+    if (result.length > 0) return result;
+  }
+  return [];
+}
+
+// Forest doesn't have a fully open GBFS — use realistic sample data for prototype
+function mockForest(lat, lng) {
+  const offsets = [
+    [0.008, 0.003], [-0.005, 0.009], [0.012, -0.006],
+    [-0.009, -0.004], [0.003, 0.015], [-0.014, 0.007],
+    [0.006, -0.011], [-0.002, 0.018], [0.016, 0.002]
+  ];
+  return offsets.map((o, i) => ({
+    id: `forest_${i}`,
+    provider: 'forest',
+    type: 'E-bike',
+    lat: lat + o[0],
+    lng: lng + o[1],
+    name: null,
+    bikes: 1,
+    battery: `${60 + Math.floor(Math.random()*35)}% battery`,
+    price: '£1 unlock + £0.18/min',
+    dist: haversine(lat, lng, lat+o[0], lng+o[1]),
+    isEbike: true,
+    isMock: true,
+  })).sort((a,b) => a.dist - b.dist);
+}
+
+function createMarker(bike) {
+  const p = PROVIDERS[bike.provider];
+  const size = 28;
+  const icon = L.divIcon({
+    className: '',
+    html: `<div class="custom-marker" style="width:${size}px;height:${size}px;background:${p.color};font-size:11px;">${bike.provider === 'santander' ? bike.bikes : '1'}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size/2, size/2],
+  });
+  const m = L.marker([bike.lat, bike.lng], { icon }).addTo(map);
+  m.on('click', () => showBikeDetail(bike));
+  m._bikeData = bike;
+  return m;
+}
+
+function renderMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  const filtered = getFiltered();
+  filtered.forEach(bike => {
+    markers.push(createMarker(bike));
+  });
+}
+
+function getFiltered() {
+  if (activeFilter === 'all') return allBikes;
+  if (activeFilter === 'ebike') return allBikes.filter(b => b.isEbike);
+  return allBikes.filter(b => b.provider === activeFilter);
+}
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMarkers();
+  renderList();
+}
+
+function renderList() {
+  const list = document.getElementById('bike-list');
+  const filtered = getFiltered().slice(0, 10);
+  document.getElementById('nearby-count').textContent = `(${filtered.length})`;
+
+  list.innerHTML = filtered.map((bike, i) => {
+    const p = PROVIDERS[bike.provider];
+    const mockNote = bike.isMock ? '<span class="badge badge-price">Demo data</span>' : '';
+    return `
+    <div class="bike-card" onclick="showBikeDetail(getFiltered()[${i}])">
+      <div class="bike-card-provider">
+        <div class="provider-dot" style="background:${p.color}"></div>
+        <div class="bike-card-name">${p.name}</div>
+      </div>
+      <div class="bike-card-type">${bike.type}${bike.provider === 'santander' && bike.bikes > 1 ? ' ×'+bike.bikes : ''}</div>
+      <div class="bike-card-dist">${formatDist(bike.dist)}</div>
+      <div class="bike-card-meta">
+        ${bike.battery ? `<span class="badge badge-battery">⚡ ${bike.battery}</span>` : ''}
+        <span class="badge badge-price">${bike.price}</span>
+        ${mockNote}
+      </div>
+      <button class="open-btn" style="background:${p.color};color:#fff;">
+        ${bike.provider === "santander" ? "Navigate to station" : bike.provider === "lime" ? "Unlock in Lime app" : "Navigate to bike"} →
+      </button>
+    </div>`;
+  }).join('');
+}
+
+function updateCounts() {
+  document.getElementById('count-all').textContent = allBikes.length;
+  document.getElementById('count-santander').textContent = allBikes.filter(b=>b.provider==='santander').length;
+  document.getElementById('count-lime').textContent = allBikes.filter(b=>b.provider==='lime').length;
+  document.getElementById('count-forest').textContent = allBikes.filter(b=>b.provider==='forest').length;
+  document.getElementById('count-voi').textContent = allBikes.filter(b=>b.provider==='voi').length;
+}
+
+function openProvider(provider, lat, lng, bike) {
+  let url;
+  if (provider === 'lime' && bike && bike.rentalUriIos) {
+    // Use Lime's own deep link from GBFS — opens directly on that vehicle
+    url = bike.rentalUriIos;
+  } else if (provider === 'lime') {
+    // Fallback: open Lime app map centred on coordinates
+    url = `limebike://map?latitude=${lat}&longitude=${lng}`;
+  } else {
+    // For Santander, Forest, Voi: open Apple Maps pinned to exact bike location
+    const label = encodeURIComponent(PROVIDERS[provider].name + ' bike');
+    url = `https://maps.apple.com/?ll=${lat},${lng}&q=${label}&z=17`;
+  }
+  window.location.href = url;
+}
+
+function showBikeDetail(bike) {
+  openProvider(bike.provider, bike.lat, bike.lng, bike);
+}
+
+function locateMe() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(pos => {
+    userLat = pos.coords.latitude;
+    userLng = pos.coords.longitude;
+    map.setView([userLat, userLng], 15);
+    placeUserMarker(userLat, userLng);
+    loadAllData(userLat, userLng);
+  }, () => {
+    alert('Location access denied. Showing central London.');
+  });
+}
+
+async function loadAllData(lat, lng) {
+  document.getElementById('status-text').textContent = 'Updating…';
+
+  const [santanderBikes, limeBikes, voiBikes] = await Promise.all([
+    fetchSantander(lat, lng),
+    fetchLime(lat, lng),
+    fetchVoi(lat, lng),
+  ]);
+
+  const forestBikes = mockForest(lat, lng);
+
+  allBikes = [
+    ...santanderBikes,
+    ...limeBikes,
+    ...forestBikes,
+    ...voiBikes,
+  ].sort((a, b) => a.dist - b.dist);
+
+  if (allBikes.length === 0) {
+    document.getElementById('error-banner').style.display = 'block';
+  }
+
+  updateCounts();
+  renderMarkers();
+  renderList();
+
+  document.getElementById('status-text').textContent = `Live · ${allBikes.length} bikes`;
+
+  const missing = [];
+  if (limeBikes.length === 0) missing.push('Lime');
+  if (voiBikes.length === 0) missing.push('Voi');
+  if (santanderBikes.length === 0) missing.push('Santander');
+  if (missing.length > 0) {
+    const banner = document.getElementById('error-banner');
+    banner.style.display = 'block';
+    banner.textContent = `Live feed unavailable for: ${missing.join(', ')}. These providers require partner API access. Forest shown as demo data.`;
+  }
+}
+
+async function init() {
+  try {
+    await new Promise((res, rej) => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        userLat = pos.coords.latitude;
+        userLng = pos.coords.longitude;
+        res();
+      }, () => {
+        userLat = DEFAULT_LAT;
+        userLng = DEFAULT_LNG;
+        res();
+      }, { timeout: 5000 });
+    });
+  } catch(e) {
+    userLat = DEFAULT_LAT; userLng = DEFAULT_LNG;
+  }
+
+  initMap(userLat, userLng);
+  if (userLat !== DEFAULT_LAT) placeUserMarker(userLat, userLng);
+  await loadAllData(userLat, userLng);
+  document.getElementById('loading').style.display = 'none';
+}
+
+init();
+</script>
+</body>
+</html>
